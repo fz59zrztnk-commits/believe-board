@@ -135,6 +135,15 @@ button{font:inherit;color:inherit}
 .legend{font:12px var(--mono);color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-top:-6px;margin-bottom:6px}
 .legend i{display:inline-block;width:2px;height:10px;background:var(--text);opacity:.55;margin-right:6px;vertical-align:middle}
 
+.ctr.open .bar{display:none}
+.qlog{grid-column:1 / -1;display:grid;gap:6px;margin-top:2px}
+.qform{display:grid;grid-template-columns:minmax(0,1fr) 96px 74px 74px auto;gap:6px}
+.qform input{background:var(--raised);border:1px solid var(--line);border-radius:8px;color:var(--text);font:14px var(--body);padding:8px 9px;min-width:0}
+.qitems{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.qitem{display:flex;justify-content:space-between;gap:10px;align-items:baseline;background:none;border:0;border-left:2px solid var(--c);padding:4px 8px;text-align:left;cursor:pointer;width:100%;color:var(--text);font:14px var(--body)}
+.qitem:hover{background:var(--raised)}
+.qitem span:last-child{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+@media (max-width:560px){ .qform{grid-template-columns:1fr 1fr} .qform input:first-child{grid-column:1 / -1} }
 /* wellbeing */
 .well-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .field{display:grid;gap:6px}
@@ -546,8 +555,10 @@ const COUNTERS = [
   {id:"e_full", sub:"English", name:"Full 3-hour papers", base:0, t:{cp3:1,cp6:3}},
   {id:"h_bank", sub:"History", name:"Evidence bank", pct:true, base:10, t:{cp1:25,cp2:35,cp4:70,cp5:90,d21:100}},
   {id:"h_pp", sub:"History", name:"Full papers", base:0, t:{cp3:1,cp6:2,cp7:3,cp8:4}},
+  {id:"h_q", sub:"History", name:"Practice questions", base:0, t:{}, open:true},
   {id:"p_bank", sub:"Politics", name:"Evidence bank", pct:true, base:45, t:{cp2:60,cp4:85,cp5:100}},
   {id:"p_ext", sub:"Politics", name:"Timed extended responses", base:0, t:{cp6:2}},
+  {id:"p_q", sub:"Politics", name:"Practice questions", base:0, t:{}, open:true},
   {id:"p_pp", sub:"Politics", name:"Full papers", base:0, t:{cp3:1,cp4:2,cp9:5}},
   {id:"l_bank", sub:"Legal", name:"Evidence bank", pct:true, base:45, t:{cp2:65,cp5:100}},
   {id:"l_pp", sub:"Legal", name:"Full papers", base:0, t:{cp3:1,cp6:2,cp7:4}},
@@ -688,12 +699,65 @@ function counterPace(c){
   return {next, expected, final};
 }
 
+
+function weekStart(){ const t0=parse(TODAY); return ymd(new Date(t0.getTime()-((t0.getDay()+6)%7)*86400000)); }
+function bumpRep(id, delta){
+  if (!delta) return;
+  const before = state.counts[id]||0, after = Math.max(0, before+delta), real = after-before;
+  state.counts[id]=after;
+  if (real){ const L = state.logs[TODAY] || (state.logs[TODAY]={}); const reps = L.reps || (L.reps={}); reps[id]=(reps[id]||0)+real; }
+  scheduleSave();
+}
+function repsThisWeek(id){
+  const ws=weekStart(); let n=0;
+  Object.entries(state.logs).forEach(([d,l])=>{ if(d>=ws && d<=TODAY && l.reps && l.reps[id]) n+=l.reps[id]; });
+  return Math.max(0,n);
+}
+const Q_TYPE = "Practice question";
+function openCounterRow(c){
+  const v=state.counts[c.id]||0, wk=repsThisWeek(c.id);
+  const row=document.createElement("div"); row.className="ctr open";
+  row.innerHTML='<div><div class="ctr-top"><span class="ctr-name"></span><span class="ctr-meta"><span class="pill muted"></span> no target, just reps</span></div></div>'+
+    '<div class="step"><button type="button" aria-label="Decrease">−</button><output class="num"></output><button type="button" aria-label="Increase">+</button></div>'+
+    '<div class="qlog"><form class="qform" autocomplete="off"><input aria-label="Question or topic" placeholder="Question / topic you answered" required maxlength="200"><input aria-label="AOS" placeholder="AOS"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Mark" placeholder="Mark"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Out of" placeholder="Out of"><button type="submit" class="btn primary">Log</button></form><ul class="qitems"></ul></div>';
+  row.querySelector(".ctr-name").textContent=c.name;
+  row.querySelector(".pill").textContent=wk+" this week";
+  row.querySelector("output").textContent=v;
+  const [minus,plus]=row.querySelectorAll(".step button");
+  minus.addEventListener("click",()=>{ bumpRep(c.id,-1); renderCounters(); });
+  plus.addEventListener("click",()=>{ bumpRep(c.id,1); renderCounters(); });
+  const f=row.querySelector("form"), [qi,ai,mi,oi]=f.querySelectorAll("input");
+  f.addEventListener("submit",async e=>{
+    e.preventDefault(); const title=qi.value.trim(); if(!title) return;
+    const mark = mi.value===""?null:Number(mi.value), outOf = oi.value===""?null:Number(oi.value);
+    const id = examsCol ? examsCol.doc().id : "x"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const data = {subject:c.sub, type:Q_TYPE, title, source:"", aos:ai.value.trim(), sat:true, date:TODAY,
+      grades:{teacher:{mark, outOf, na:false}}, notes:"", files:[], counted:true};
+    bumpRep(c.id,1);
+    await persistExam(id, data, true);
+    renderCounters();
+    toast(c.sub+" question logged. "+(repsThisWeek(c.id))+" this week.");
+  });
+  const recent = Object.entries(exams).filter(([,x])=>x.subject===c.sub && REP_MAP[x.subject+"|"+x.type]===c.id)
+    .sort((a,b)=>((b[1].createdAt||"")>(a[1].createdAt||"")?1:-1)).slice(0,3);
+  const ul=row.querySelector(".qitems");
+  recent.forEach(([id,x])=>{
+    const li=document.createElement("li"); const b=document.createElement("button"); b.type="button"; b.className="qitem"; b.style.setProperty("--c",SUBJ[c.sub].c);
+    const g=(x.grades||{}).teacher||{}, p=pctOf(g);
+    b.innerHTML="<span></span><span></span>"; b.firstChild.textContent=x.title;
+    b.lastChild.textContent=[x.aos, p!==null? g.mark+"/"+g.outOf : null, x.date? parse(x.date).toLocaleDateString("en-AU",{day:"numeric",month:"short"}):null].filter(Boolean).join(" · ");
+    b.addEventListener("click",()=>openExam(id));
+    li.appendChild(b); ul.appendChild(li);
+  });
+  return row;
+}
 function renderCounters(){
   const wrap=$("counters"); wrap.innerHTML="";
   ["English","History","Politics","Legal","HHD"].forEach(sub=>{
     const box=document.createElement("div"); box.className="subj"; box.style.setProperty("--c",SUBJ[sub].c);
     box.innerHTML='<div class="subj-h"><b></b></div>'; box.querySelector("b").textContent=sub;
     COUNTERS.filter(c=>c.sub===sub).forEach(c=>{
+      if (c.open){ box.appendChild(openCounterRow(c)); return; }
       const v=state.counts[c.id], pace=counterPace(c);
       const scale = c.pct?100:pace.final;
       const row=document.createElement("div"); row.className="ctr";
@@ -717,9 +781,9 @@ function renderCounters(){
       row.querySelector(".pace").style.left="calc("+Math.min(100,pace.expected/scale*100)+"% - 1px)";
       const [minus,plus]=row.querySelectorAll(".step button");
       const stepv=c.pct?5:1;
-      minus.addEventListener("click",()=>{ state.counts[c.id]=Math.max(0,v-stepv); scheduleSave(); renderCounters(); });
+      minus.addEventListener("click",()=>{ bumpRep(c.id, -stepv); renderCounters(); });
       plus.addEventListener("click",()=>{
-        const nv=Math.min(c.pct?100:999,v+stepv); state.counts[c.id]=nv; scheduleSave();
+        const nv=Math.min(c.pct?100:999,v+stepv); bumpRep(c.id, nv-v);
         if (nv>=pace.next.v && v<pace.next.v) toast(c.sub+" "+c.name.toLowerCase()+": target hit. Believe.");
         renderCounters();
       });
@@ -804,15 +868,17 @@ const SUBJECTS = ["English","Legal","Politics","History","HHD"];
 const TYPES = {
   English:["Full paper","Section A · Oedipus","Section B · Creative","Section C · Argument","Plan","Other"],
   Legal:["Full paper","Section","Short answer question","Extended response","Other"],
-  Politics:["Full paper","Section","Short answer question","Extended response","Other"],
-  History:["Full paper","Section","Source analysis","Short answer question","Extended response","Other"],
+  Politics:["Practice question","Full paper","Section","Short answer question","Extended response","Other"],
+  History:["Practice question","Full paper","Section","Source analysis","Short answer question","Extended response","Other"],
   HHD:["Full paper","Section","Short answer question","Extended response","Other"]
 };
 const REP_MAP = {
   "English|Full paper":"e_full","English|Section A · Oedipus":"e_A","English|Section B · Creative":"e_B",
   "English|Section C · Argument":"e_C","English|Plan":"e_plans",
   "Legal|Full paper":"l_pp","Politics|Full paper":"p_pp","Politics|Extended response":"p_ext",
-  "History|Full paper":"h_pp","HHD|Full paper":"hhd_pp"
+  "History|Full paper":"h_pp","HHD|Full paper":"hhd_pp",
+  "Politics|Practice question":"p_q","Politics|Short answer question":"p_q",
+  "History|Practice question":"h_q","History|Short answer question":"h_q","History|Source analysis":"h_q","History|Extended response":"h_q"
 };
 const MARKERS = sub => sub==="English" ? [["teacher","Teacher"],["manraj","Manraj"]] : [["teacher","Teacher"]];
 const XLS = "believe-board-exams-v1";
@@ -1064,7 +1130,7 @@ function wireLibrary(){
     const key=REP_MAP[d.subject+"|"+d.type];
     let bumped=null;
     if (key && d.sat && !d.counted && $("fCount").checked){
-      state.counts[key]=(state.counts[key]||0)+1; d.counted=true; scheduleSave(); renderCounters();
+      bumpRep(key,1); d.counted=true; renderCounters();
       bumped=COUNTERS.find(c=>c.id===key);
     }
     $("fSave").disabled=true;
@@ -1218,7 +1284,7 @@ renderAll();
       if (!qs.metadata.fromCache && localOnly.length && !qs.size){ localOnly.forEach(id=>{ examsCol.doc(id).set(exams[id]).catch(()=>{}); next[id]=exams[id]; }); }
       exams = JSON.parse(JSON.stringify(next));
       try { localStorage.setItem(XLS, JSON.stringify(exams)); } catch(e){}
-      renderLib();
+      renderLib(); renderCounters();
     }, ()=>{ examsCol=null; });
     assets=as; if (editing) renderFiles();
     syncEl.textContent = "connecting…";
