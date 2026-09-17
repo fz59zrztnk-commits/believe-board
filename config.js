@@ -1,6 +1,5 @@
-// Paste your two Supabase values between the quotes, then save (commit).
-// Supabase → Project Settings → API (or "Data API" / "API Keys").
+// Believe Board sync settings. The publishable key is safe to be public; your data is locked to your login.
 window.BB_CONFIG = {
-  SUPABASE_URL: "PASTE_PROJECT_URL_HERE",        // looks like https://abcdefgh.supabase.co
-  SUPABASE_ANON_KEY: "PASTE_ANON_PUBLIC_KEY_HERE" // the long "anon" / "publishable" key — NOT the service_role / secret key
+  SUPABASE_URL: "https://vtzrzxdtatqztymsptit.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_kQjeCQ065CqzWehAxxkfCw__gkRejFx"
 };
