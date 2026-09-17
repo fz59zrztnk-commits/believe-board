@@ -289,6 +289,7 @@ body{padding-top:env(safe-area-inset-top,0px);min-height:100%;-webkit-tap-highli
 #authMsg{min-height:20px;font-size:14px;color:var(--warn)}
 .setup-only{display:none}
 .needs-setup .setup-only{display:block}
+.auth-form{display:grid;gap:12px}
 .needs-setup .auth-form{display:none}
 .acct{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px}
 .acct .linkbtn{font-size:12px}
@@ -316,7 +317,7 @@ body{padding-top:env(safe-area-inset-top,0px);min-height:100%;-webkit-tap-highli
     <div class="setup-only">
       <p><b style="color:var(--text)">One step left.</b> Open <code>config.js</code> in your GitHub repo and paste in your Supabase Project URL and anon key, then commit. Reload this page after a minute.</p>
     </div>
-    <form class="auth-form" id="authForm" style="display:grid;gap:12px">
+    <form class="auth-form" id="authForm">
       <p id="authTitle" style="color:var(--text);font-weight:600">Sign in</p>
       <input type="email" id="authEmail" autocomplete="username" placeholder="Email" required>
       <input type="password" id="authPass" autocomplete="current-password" placeholder="Password (6+ characters)" minlength="6" required>
