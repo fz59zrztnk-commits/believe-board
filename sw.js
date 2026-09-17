@@ -1,4 +1,4 @@
-const CACHE = "believe-board-v1";
+const CACHE = "believe-board-v2";
 const SHELL = ["./", "index.html", "config.js", "backend.js", "supabase.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
@@ -14,7 +14,7 @@ self.addEventListener("fetch", e => {
   const fresh = sameOrigin && (req.mode === "navigate" || /\/(index\.html|config\.js|backend\.js)$/.test(url.pathname) || url.pathname.endsWith("/"));
   if (fresh) {
     // network first so updates arrive; cached copy when offline
-    e.respondWith(fetch(req).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); return res; })
+    e.respondWith(fetch(req.url, { cache:"no-cache", credentials:"same-origin" }).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); return res; })
       .catch(() => caches.match(req).then(r => r || caches.match("index.html"))));
     return;
   }
