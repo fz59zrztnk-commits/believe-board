@@ -136,8 +136,12 @@ button{font:inherit;color:inherit}
 .legend i{display:inline-block;width:2px;height:10px;background:var(--text);opacity:.55;margin-right:6px;vertical-align:middle}
 
 .ctr.open .bar{display:none}
+.qtotal{grid-row:1 / span 2;grid-column:2;display:grid;justify-items:center;align-content:center;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:6px 14px;min-width:78px}
+.qtotal output{font:800 26px/1 var(--display)}
+.qempty{color:var(--muted);font-size:13px;padding:6px 8px}
+.qitem .qt{overflow-wrap:anywhere}
 .qlog{grid-column:1 / -1;display:grid;gap:6px;margin-top:2px}
-.qform{display:grid;grid-template-columns:minmax(0,1fr) 96px 74px 74px auto;gap:6px}
+.qform{display:grid;grid-template-columns:minmax(0,1fr) 92px 76px 86px auto;gap:6px}
 .qform input{background:var(--raised);border:1px solid var(--line);border-radius:8px;color:var(--text);font:14px var(--body);padding:8px 9px;min-width:0}
 .qitems{list-style:none;margin:0;padding:0;display:grid;gap:4px}
 .qitem{display:flex;justify-content:space-between;gap:10px;align-items:baseline;background:none;border:0;border-left:2px solid var(--c);padding:4px 8px;text-align:left;cursor:pointer;width:100%;color:var(--text);font:14px var(--body)}
@@ -714,18 +718,23 @@ function repsThisWeek(id){
   return Math.max(0,n);
 }
 const Q_TYPE = "Practice question";
+const qExpanded = {};
+function questionsFor(c){
+  return Object.entries(exams)
+    .filter(([,x])=>x.subject===c.sub && REP_MAP[x.subject+"|"+x.type]===c.id)
+    .sort((a,b)=>{ const ad=(a[1].date||"")+(a[1].createdAt||""), bd=(b[1].date||"")+(b[1].createdAt||""); return ad<bd?1:-1; });
+}
 function openCounterRow(c){
-  const v=state.counts[c.id]||0, wk=repsThisWeek(c.id);
+  const items=questionsFor(c), ws=weekStart();
+  const wk=items.filter(([,x])=>(x.date||"")>=ws).length;
+  const shown = qExpanded[c.id] ? items.length : 5;
   const row=document.createElement("div"); row.className="ctr open";
-  row.innerHTML='<div><div class="ctr-top"><span class="ctr-name"></span><span class="ctr-meta"><span class="pill muted"></span> no target, just reps</span></div></div>'+
-    '<div class="step"><button type="button" aria-label="Decrease">−</button><output class="num"></output><button type="button" aria-label="Increase">+</button></div>'+
-    '<div class="qlog"><form class="qform" autocomplete="off"><input aria-label="Question or topic" placeholder="Question / topic you answered" required maxlength="200"><input aria-label="AOS" placeholder="AOS"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Mark" placeholder="Mark"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Out of" placeholder="Out of"><button type="submit" class="btn primary">Log</button></form><ul class="qitems"></ul></div>';
+  row.innerHTML='<div><div class="ctr-top"><span class="ctr-name"></span><span class="ctr-meta"><span class="pill muted"></span> every question you log is listed below</span></div></div>'+
+    '<div class="qtotal"><output class="num"></output><span class="label">logged</span></div>'+
+    '<div class="qlog"><form class="qform" autocomplete="off"><input aria-label="Question or topic" placeholder="Question you answered" required maxlength="200"><input aria-label="AOS" placeholder="AOS"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Mark" placeholder="Mark"><input type="number" inputmode="decimal" min="0" step="0.5" aria-label="Out of" placeholder="Out of"><button type="submit" class="btn primary">Log</button></form><ul class="qitems"></ul></div>';
   row.querySelector(".ctr-name").textContent=c.name;
   row.querySelector(".pill").textContent=wk+" this week";
-  row.querySelector("output").textContent=v;
-  const [minus,plus]=row.querySelectorAll(".step button");
-  minus.addEventListener("click",()=>{ bumpRep(c.id,-1); renderCounters(); });
-  plus.addEventListener("click",()=>{ bumpRep(c.id,1); renderCounters(); });
+  row.querySelector("output").textContent=items.length;
   const f=row.querySelector("form"), [qi,ai,mi,oi]=f.querySelectorAll("input");
   f.addEventListener("submit",async e=>{
     e.preventDefault(); const title=qi.value.trim(); if(!title) return;
@@ -733,22 +742,31 @@ function openCounterRow(c){
     const id = examsCol ? examsCol.doc().id : "x"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     const data = {subject:c.sub, type:Q_TYPE, title, source:"", aos:ai.value.trim(), sat:true, date:TODAY,
       grades:{teacher:{mark, outOf, na:false}}, notes:"", files:[], counted:true};
-    bumpRep(c.id,1);
     await persistExam(id, data, true);
     renderCounters();
-    toast(c.sub+" question logged. "+(repsThisWeek(c.id))+" this week.");
+    toast(c.sub+" question logged.");
   });
-  const recent = Object.entries(exams).filter(([,x])=>x.subject===c.sub && REP_MAP[x.subject+"|"+x.type]===c.id)
-    .sort((a,b)=>((b[1].createdAt||"")>(a[1].createdAt||"")?1:-1)).slice(0,3);
   const ul=row.querySelector(".qitems");
-  recent.forEach(([id,x])=>{
+  if (!items.length){
+    const li=document.createElement("li"); li.className="qempty";
+    li.textContent="No "+c.sub+" questions logged yet. Type the question you just answered and tap Log.";
+    ul.appendChild(li);
+  }
+  items.slice(0,shown).forEach(([id,x])=>{
     const li=document.createElement("li"); const b=document.createElement("button"); b.type="button"; b.className="qitem"; b.style.setProperty("--c",SUBJ[c.sub].c);
     const g=(x.grades||{}).teacher||{}, p=pctOf(g);
-    b.innerHTML="<span></span><span></span>"; b.firstChild.textContent=x.title;
-    b.lastChild.textContent=[x.aos, p!==null? g.mark+"/"+g.outOf : null, x.date? parse(x.date).toLocaleDateString("en-AU",{day:"numeric",month:"short"}):null].filter(Boolean).join(" · ");
+    b.innerHTML='<span class="qt"></span><span class="qm"></span>'; b.firstChild.textContent=x.title;
+    b.lastChild.textContent=[x.aos, p!==null? g.mark+"/"+g.outOf+" · "+Math.round(p)+"%" : null, x.date? parse(x.date).toLocaleDateString("en-AU",{day:"numeric",month:"short"}):null].filter(Boolean).join(" · ");
     b.addEventListener("click",()=>openExam(id));
     li.appendChild(b); ul.appendChild(li);
   });
+  if (items.length>5){
+    const li=document.createElement("li");
+    const m=document.createElement("button"); m.type="button"; m.className="more";
+    m.textContent = qExpanded[c.id] ? "Show less" : "Show all "+items.length;
+    m.addEventListener("click",()=>{ qExpanded[c.id]=!qExpanded[c.id]; renderCounters(); });
+    li.appendChild(m); ul.appendChild(li);
+  }
   return row;
 }
 function renderCounters(){
@@ -1001,7 +1019,8 @@ function fillTypes(sub, val){
 }
 function updateCountToggle(){
   const x=editing.data, key=REP_MAP[$("fSubject").value+"|"+$("fType").value];
-  const show = !!key && !x.counted;
+  const ctr = COUNTERS.find(c=>c.id===key);
+  const show = !!key && !x.counted && !(ctr && ctr.open);
   $("fCountWrap").hidden = !show;
   if (key){ const c=COUNTERS.find(c=>c.id===key); $("fCountTxt").textContent="Add +1 to "+c.sub+" · "+c.name+" when saved as sat"; }
 }
@@ -1129,7 +1148,8 @@ function wireLibrary(){
     if (!d.title){ $("fTitle").focus(); return; }
     const key=REP_MAP[d.subject+"|"+d.type];
     let bumped=null;
-    if (key && d.sat && !d.counted && $("fCount").checked){
+    const ctr = COUNTERS.find(c=>c.id===key);
+    if (key && !(ctr && ctr.open) && d.sat && !d.counted && $("fCount").checked){
       bumpRep(key,1); d.counted=true; renderCounters();
       bumped=COUNTERS.find(c=>c.id===key);
     }
